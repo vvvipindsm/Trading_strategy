@@ -1,0 +1,96 @@
+//+------------------------------------------------------------------+
+//|                                                      ProjectName |
+//|                                      Copyright 2020, CompanyName |
+//|                                       http://www.companyname.net |
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2026"
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+#property strict
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   Print(">>> Copy Trading Logger Started. Monitoring transactions...");
+   return(INIT_SUCCEEDED);
+  }
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {
+   Print(">>> Copy Trading Logger Stopped. Reason: ", EnumToString((ENUM_INIT_RETCODE)reason));
+  }
+//+------------------------------------------------------------------+
+//|                                     CopyTradeLogger_Ultimate.mq5 |
+//|                                    Copyright 2026, Gemini Alpha  |
+//+------------------------------------------------------------------+
+#property strict
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+  {
+//--- 1. CAPTURE ENTRIES AND EXITS (Market Executions)
+   if(trans.type == TRADE_TRANSACTION_DEAL_ADD)
+     {
+      if(HistoryDealSelect(trans.deal))
+        {
+         long     dealEntry  = HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
+         double   price      = HistoryDealGetDouble(trans.deal, DEAL_PRICE);
+         string   symbol     = HistoryDealGetString(trans.deal, DEAL_SYMBOL);
+         ENUM_DEAL_TYPE type = (ENUM_DEAL_TYPE)HistoryDealGetInteger(trans.deal, DEAL_TYPE);
+         double   vol        = HistoryDealGetDouble(trans.deal, DEAL_VOLUME);
+         long     orderTicket = HistoryDealGetInteger(trans.deal, DEAL_ORDER);
+
+         if(dealEntry == DEAL_ENTRY_IN)
+           {
+            double sl = 0, tp = 0;
+            if(HistoryOrderSelect(orderTicket))
+              {
+               sl = HistoryOrderGetDouble(orderTicket, ORDER_SL);
+               tp = HistoryOrderGetDouble(orderTicket, ORDER_TP);
+              }
+
+            PrintFormat(">>> [ENTRY CONFIRMED] %s %s | Vol: %.2f | Price: %.5f | SL: %.5f | TP: %.5f",
+                        EnumToString(type), symbol, vol, price, sl, tp);
+           }
+         else
+            if(dealEntry == DEAL_ENTRY_OUT)
+              {
+               double profit = HistoryDealGetDouble(trans.deal, DEAL_PROFIT);
+               PrintFormat(">>> [EXIT CONFIRMED] %s %s | Price: %.5f | Profit: %.2f USD",
+                           EnumToString(type), symbol, price, profit);
+              }
+        }
+     }
+
+//--- 2. CAPTURE MANUAL SL/TP UPDATES (On existing positions)
+   if(trans.type == TRADE_TRANSACTION_REQUEST && request.action == TRADE_ACTION_SLTP)
+     {
+      if(result.retcode == 10008 || result.retcode == 10009)
+        {
+         PrintFormat(">>> [SL/TP MODIFIED] %s | New SL: %.5f | New TP: %.5f",
+                     request.symbol, request.sl, request.tp);
+        }
+     }
+
+//--- 3. CAPTURE PENDING ORDERS (LIMITS AND STOPS)
+// This now includes Buy Limit and Sell Limit
+   if(trans.type == TRADE_TRANSACTION_ORDER_ADD)
+     {
+      if(trans.order_type == ORDER_TYPE_BUY_STOP  || trans.order_type == ORDER_TYPE_SELL_STOP ||
+         trans.order_type == ORDER_TYPE_BUY_LIMIT || trans.order_type == ORDER_TYPE_SELL_LIMIT)
+        {
+         PrintFormat(">>> [PENDING PLACED] %s %s at %.5f | SL: %.5f | TP: %.5f",
+                     trans.symbol, EnumToString(trans.order_type), trans.price, trans.price_sl, trans.price_tp);
+        }
+     }
+  }
+
